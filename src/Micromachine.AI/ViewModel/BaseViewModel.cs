@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace Micromachine.AI.ViewModel
 {
@@ -6,7 +7,7 @@ namespace Micromachine.AI.ViewModel
     {
         public event PropertyChangedEventHandler PropertyChanged;
 
-        protected virtual void OnPropertyChanged(string propertyName)
+        protected virtual void OnPropertyChanged([CallerMemberName]string propertyName = "")
         {
             OnPropertyChanged(new PropertyChangedEventArgs(propertyName));
         }
