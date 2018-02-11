@@ -99,7 +99,7 @@ namespace Micromachine.AI.ViewModel
             if (this._imageService.CameraInput != null)
             {
                 this._trainingSet.Add(new Tuple<float[], Direction>((float[]) this._imageService.CameraInput.Clone(), direction));
-                
+                OnPropertyChanged("TrainingCount");
             }
         }
 
