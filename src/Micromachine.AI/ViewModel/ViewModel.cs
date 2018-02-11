@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -47,20 +48,29 @@ namespace Micromachine.AI.ViewModel
 
         public float Angle { get; set; }
 
-        public float X { get; set; } = 200.0f;
+        public float X { get; set; } = 120.0f;
 
         public float Y { get; set; } = 200.0f;
 
         public float Speed { get; set; }
 
+        public ObservableCollection<string> Logs { get; set; } = new ObservableCollection<string>();
+
         public ICommand TeachCommand
         {
-            get { return this._someCommand ?? (this._someCommand = new RelayCommand(o => true, o => Teach((Direction)int.Parse((string)o)))); }
+            get { return this._someCommand ?? (this._someCommand = new RelayCommand(o => true, o => Teach((Direction) int.Parse((string) o)))); }
         }
 
         public ICommand AutoModeCommand
         {
-            get { return this._autoModeCommand ?? (this._autoModeCommand = new RelayCommand(o => true, o => this._autoMode = !this._autoMode)); }
+            get
+            {
+                return this._autoModeCommand ?? (this._autoModeCommand = new RelayCommand(o => true, o =>
+                {
+                    this._autoMode = !this._autoMode;
+                    this.Logs.Add($"AutoMode = {this._autoMode}");
+                }));
+            }
         }
 
         public ICommand ResetNetworkCommand
@@ -68,11 +78,24 @@ namespace Micromachine.AI.ViewModel
             get { return this._resetNetworkCommand ?? (this._resetNetworkCommand = new RelayCommand(o => true, o => CreateNetwork())); }
         }
 
+        public float Loss
+        {
+            get => this._loss;
+            set
+            {
+                this._loss = value;
+                OnPropertyChanged();
+            }
+        }
+
+        public int TrainingCount => this._trainingSet.Count;
+
         private void AddNewTraining(Direction direction)
         {
             if (this._imageService.CameraInput != null)
             {
-                this._trainingSet.Add(new Tuple<float[], Direction>((float[])this._imageService.CameraInput.Clone(), direction));
+                this._trainingSet.Add(new Tuple<float[], Direction>((float[]) this._imageService.CameraInput.Clone(), direction));
+                OnPropertyChanged("TrainingCount");
             }
         }
 
@@ -85,7 +108,38 @@ namespace Micromachine.AI.ViewModel
             this._network.AddLayer(new SoftmaxLayer(3));
         }
 
-        private void PerformTraining()
+        private void Rotate(Direction direction)
+        {
+            switch (direction)
+            {
+                case Direction.Straight:
+                    break;
+                case Direction.Left:
+                    this.Angle -= 3;
+                    break;
+                case Direction.Right:
+                    this.Angle += 3;
+                    break;
+            }
+        }
+
+        public void Teach(Direction direction)
+        {
+            this.Logs.Add($"Teach {direction}");
+            if (this.Logs.Count > 5)
+            {
+                this.Logs.RemoveAt(0);
+            }
+
+            lock (this.Locker)
+            {
+                AddNewTraining(direction);
+            }
+
+            Train();
+        }
+
+        private void Train()
         {
             // Create input and output volumes
             var batchSize = this._trainingSet.Count;
@@ -101,10 +155,10 @@ namespace Micromachine.AI.ViewModel
                     input.Set(0, 0, j, i, this._trainingSet[i].Item1[j]);
                 }
 
-                output.Set(0, 0, (int)this._trainingSet[i].Item2, i, 1.0f);
+                output.Set(0, 0, (int) this._trainingSet[i].Item2, i, 1.0f);
             }
 
-            var trainer = new SgdTrainer(this._network) { LearningRate = 0.01f, BatchSize = batchSize, L2Decay = 0.1f, L1Decay = 0.1f };
+            var trainer = new SgdTrainer(this._network) {LearningRate = 0.01f, BatchSize = batchSize, L2Decay = 0.1f, L1Decay = 0.1f};
 
             // Learn until loss converges
             float previousLoss;
@@ -114,31 +168,8 @@ namespace Micromachine.AI.ViewModel
                 trainer.Train(input, output);
                 Debug.WriteLine(trainer.Loss);
             } while (Math.Abs(previousLoss - trainer.Loss) > 0.01);
-        }
 
-        private void Rotate(Direction direction)
-        {
-            switch (direction)
-            {
-                case Direction.Straight:
-                    break;
-                case Direction.Left:
-                    this.Angle -= 2;
-                    break;
-                case Direction.Right:
-                    this.Angle += 2;
-                    break;
-            }
-        }
-
-        public void Teach(Direction direction)
-        {
-            lock (this.Locker)
-            {
-                AddNewTraining(direction);
-            }
-
-            PerformTraining();
+            this.Loss = (float) Math.Round(trainer.Loss, 2);
         }
 
         public void UpdateCarCoordinates()
@@ -173,20 +204,21 @@ namespace Micromachine.AI.ViewModel
                 var input = BuilderInstance.Volume.From(this._imageService.CameraInput, new Shape(1, 1, 200, 1));
                 this._network.Forward(input);
 
-                var direction = (Direction)this._network.GetPrediction()[0];
+                var direction = (Direction) this._network.GetPrediction()[0];
                 Rotate(direction);
 
                 this.Speed = this.maxSpeed;
             }
 
-            this.X += this.Speed * (float)Math.Sin(this.Angle / 360.0 * 2 * Math.PI);
-            this.Y -= this.Speed * (float)Math.Cos(this.Angle / 360.0 * 2 * Math.PI);
+            this.X += this.Speed * (float) Math.Sin(this.Angle / 360.0 * 2 * Math.PI);
+            this.Y -= this.Speed * (float) Math.Cos(this.Angle / 360.0 * 2 * Math.PI);
         }
 
         #region ImageSource
 
         private ImageSource _imageSource;
         private Net<float> _network;
+        private float _loss;
 
         public ImageSource ImageSource
         {
