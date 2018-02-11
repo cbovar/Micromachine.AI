@@ -68,14 +68,18 @@ namespace Micromachine.AI.ViewModel
                 return this._autoModeCommand ?? (this._autoModeCommand = new RelayCommand(o => true, o =>
                 {
                     this._autoMode = !this._autoMode;
-                    this.Logs.Add($"AutoMode = {this._autoMode}");
+                    Log($"AutoMode = {this._autoMode}");
                 }));
             }
         }
 
         public ICommand ResetNetworkCommand
         {
-            get { return this._resetNetworkCommand ?? (this._resetNetworkCommand = new RelayCommand(o => true, o => CreateNetwork())); }
+            get { return this._resetNetworkCommand ?? (this._resetNetworkCommand = new RelayCommand(o => true, o =>
+            {
+                this.CreateNetwork();
+                this.Log("Reset");
+            })); }
         }
 
         public float Loss
@@ -95,17 +99,32 @@ namespace Micromachine.AI.ViewModel
             if (this._imageService.CameraInput != null)
             {
                 this._trainingSet.Add(new Tuple<float[], Direction>((float[]) this._imageService.CameraInput.Clone(), direction));
-                OnPropertyChanged("TrainingCount");
+                
             }
         }
 
         private void CreateNetwork()
         {
+            this._trainingSet.Clear();
+            this.Loss = 0.0f;
+
             this._network = new Net<float>();
             this._network.AddLayer(new InputLayer(1, 1, 200));
             this._network.AddLayer(new FullyConnLayer(100));
             this._network.AddLayer(new FullyConnLayer(3));
             this._network.AddLayer(new SoftmaxLayer(3));
+
+            OnPropertyChanged("TrainingCount");
+            OnPropertyChanged("Loss");
+        }
+
+        private void Log(string s)
+        {
+            this.Logs.Add(s);
+            if (this.Logs.Count > 5)
+            {
+                this.Logs.RemoveAt(0);
+            }
         }
 
         private void Rotate(Direction direction)
@@ -125,11 +144,7 @@ namespace Micromachine.AI.ViewModel
 
         public void Teach(Direction direction)
         {
-            this.Logs.Add($"Teach {direction}");
-            if (this.Logs.Count > 5)
-            {
-                this.Logs.RemoveAt(0);
-            }
+            Log($"Teach {direction}");
 
             lock (this.Locker)
             {
