@@ -6,7 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ConvNetSharp.Core;
-using ConvNetSharp.Core.Layers.Single;
+using ConvNetSharp.Core.Fluent;
 using ConvNetSharp.Core.Training.Single;
 using ConvNetSharp.Volume;
 using ConvNetSharp.Volume.Single;
@@ -35,7 +35,8 @@ namespace Micromachine.AI.ViewModel
         public ViewModel()
         {
             WriteableBitmap writeableBitmap;
-            this._imageService = new ImageService(this);
+            this._cameraGrid = new RectangularCameraGrid(10,10);
+            this._imageService = new ImageService(this, this._cameraGrid);
             this.ImageSource = writeableBitmap = this._imageService.CreateImage(900, 600);
             CompositionTarget.Rendering += (o, e) =>
             {
@@ -58,7 +59,7 @@ namespace Micromachine.AI.ViewModel
 
         public ICommand TeachCommand
         {
-            get { return this._someCommand ?? (this._someCommand = new RelayCommand(o => true, o => Teach((Direction) int.Parse((string) o)))); }
+            get { return this._someCommand ?? (this._someCommand = new RelayCommand(o => true, o => Teach((Direction)int.Parse((string)o)))); }
         }
 
         public ICommand AutoModeCommand
@@ -75,11 +76,14 @@ namespace Micromachine.AI.ViewModel
 
         public ICommand ResetNetworkCommand
         {
-            get { return this._resetNetworkCommand ?? (this._resetNetworkCommand = new RelayCommand(o => true, o =>
+            get
             {
-                this.CreateNetwork();
-                this.Log("Reset");
-            })); }
+                return this._resetNetworkCommand ?? (this._resetNetworkCommand = new RelayCommand(o => true, o =>
+                {
+                    CreateNetwork();
+                    Log("Reset");
+                }));
+            }
         }
 
         public float Loss
@@ -98,7 +102,7 @@ namespace Micromachine.AI.ViewModel
         {
             if (this._imageService.CameraInput != null)
             {
-                this._trainingSet.Add(new Tuple<float[], Direction>((float[]) this._imageService.CameraInput.Clone(), direction));
+                this._trainingSet.Add(new Tuple<float[], Direction>((float[])this._imageService.CameraInput.Clone(), direction));
                 OnPropertyChanged("TrainingCount");
             }
         }
@@ -108,11 +112,12 @@ namespace Micromachine.AI.ViewModel
             this._trainingSet.Clear();
             this.Loss = 0.0f;
 
-            this._network = new Net<float>();
-            this._network.AddLayer(new InputLayer(1, 1, 200));
-            this._network.AddLayer(new FullyConnLayer(100));
-            this._network.AddLayer(new FullyConnLayer(3));
-            this._network.AddLayer(new SoftmaxLayer(3));
+            this._network = FluentNet<float>
+                .Create(1, 1, this._cameraGrid.TotalPoints)
+                .FullyConn(100)
+                .FullyConn(3)
+                .Softmax(3)
+                .Build();
 
             OnPropertyChanged("TrainingCount");
             OnPropertyChanged("Loss");
@@ -158,22 +163,20 @@ namespace Micromachine.AI.ViewModel
         {
             // Create input and output volumes
             var batchSize = this._trainingSet.Count;
-            var rawInput = new float[batchSize * 200];
-            var input = BuilderInstance.Volume.From(rawInput, new Shape(1, 1, 200, batchSize));
-            var oneHotEncoded = new float[3 * batchSize];
-            var output = BuilderInstance.Volume.From(oneHotEncoded, new Shape(1, 1, 3, batchSize));
+            var input = BuilderInstance.Volume.SameAs(new Shape(1, 1, this._cameraGrid.TotalPoints, batchSize));
+            var output = BuilderInstance.Volume.SameAs(new Shape(1, 1, 3, batchSize));
 
             for (var i = 0; i < batchSize; i++)
             {
-                for (var j = 0; j < 200; j++)
+                for (var j = 0; j < this._cameraGrid.TotalPoints; j++)
                 {
                     input.Set(0, 0, j, i, this._trainingSet[i].Item1[j]);
                 }
 
-                output.Set(0, 0, (int) this._trainingSet[i].Item2, i, 1.0f);
+                output.Set(0, 0, (int)this._trainingSet[i].Item2, i, 1.0f); // one-hot encoded output
             }
 
-            var trainer = new SgdTrainer(this._network) {LearningRate = 0.01f, BatchSize = batchSize, L2Decay = 0.1f, L1Decay = 0.1f};
+            var trainer = new SgdTrainer(this._network) { LearningRate = 0.01f, BatchSize = batchSize, L2Decay = 0.1f, L1Decay = 0.1f };
 
             // Learn until loss converges
             float previousLoss;
@@ -184,12 +187,22 @@ namespace Micromachine.AI.ViewModel
                 Debug.WriteLine(trainer.Loss);
             } while (Math.Abs(previousLoss - trainer.Loss) > 0.01);
 
-            this.Loss = (float) Math.Round(trainer.Loss, 2);
+            this.Loss = (float)Math.Round(trainer.Loss, 2);
         }
 
         public void UpdateCarCoordinates()
         {
-            if (!this._autoMode)
+            if (this._autoMode)
+            {
+                var input = BuilderInstance.Volume.From(this._imageService.CameraInput, new Shape(1, 1, this._cameraGrid.TotalPoints, 1));
+                this._network.Forward(input); // evaluate network
+
+                var direction = (Direction)this._network.GetPrediction()[0]; // one-hot encoded -> label
+                Rotate(direction);
+
+                this.Speed = this.maxSpeed;
+            }
+            else
             {
                 if (Keyboard.IsKeyDown(Key.Right) && Keyboard.Modifiers == ModifierKeys.None)
                 {
@@ -214,26 +227,17 @@ namespace Micromachine.AI.ViewModel
                     this.Speed = 0.0f;
                 }
             }
-            else
-            {
-                var input = BuilderInstance.Volume.From(this._imageService.CameraInput, new Shape(1, 1, 200, 1));
-                this._network.Forward(input);
 
-                var direction = (Direction) this._network.GetPrediction()[0];
-                Rotate(direction);
-
-                this.Speed = this.maxSpeed;
-            }
-
-            this.X += this.Speed * (float) Math.Sin(this.Angle / 360.0 * 2 * Math.PI);
-            this.Y -= this.Speed * (float) Math.Cos(this.Angle / 360.0 * 2 * Math.PI);
+            this.X += this.Speed * (float)Math.Sin(this.Angle / 360.0 * 2 * Math.PI);
+            this.Y -= this.Speed * (float)Math.Cos(this.Angle / 360.0 * 2 * Math.PI);
         }
 
         #region ImageSource
 
         private ImageSource _imageSource;
-        private Net<float> _network;
+        private INet<float> _network;
         private float _loss;
+        private readonly RectangularCameraGrid _cameraGrid;
 
         public ImageSource ImageSource
         {

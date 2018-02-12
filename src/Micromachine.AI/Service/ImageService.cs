@@ -13,12 +13,14 @@ namespace Micromachine.AI.Service
         private readonly Stopwatch _stopwatch = new Stopwatch();
         private readonly SKBitmap _trackBmp;
         private readonly ViewModel.ViewModel _vm;
+        private readonly ICameraGrid _cameraGrid;
 
         private int _call;
 
-        public ImageService(ViewModel.ViewModel vm)
+        public ImageService(ViewModel.ViewModel vm, ICameraGrid cameraGrid)
         {
             this._vm = vm;
+            this._cameraGrid = cameraGrid;
 
             this._trackBmp = SKBitmap.Decode(@"./Images/track.png");
             this._carBmp = SKBitmap.Decode(@"./Images/car.png");
@@ -32,13 +34,13 @@ namespace Micromachine.AI.Service
         }
 
         /// <summary>
-        /// Draw track + car + camera grid + camera output
+        ///     Draw track + car + camera grid + camera output
         /// </summary>
         /// <param name="writeableBitmap"></param>
         public void UpdateImage(WriteableBitmap writeableBitmap)
         {
-            int width = (int) writeableBitmap.Width,
-                height = (int) writeableBitmap.Height;
+            int width = (int)writeableBitmap.Width,
+                height = (int)writeableBitmap.Height;
 
             writeableBitmap.Lock();
 
@@ -52,7 +54,7 @@ namespace Micromachine.AI.Service
             {
                 var canvas = surface.Canvas;
 
-                var paint = new SKPaint {Color = new SKColor(0, 0, 0), TextSize = 16};
+                var paint = new SKPaint { Color = new SKColor(0, 0, 0), TextSize = 16 };
 
                 // Draw track
                 canvas.DrawBitmap(this._trackBmp, new SKRect(0, 0, width, height));
@@ -74,17 +76,11 @@ namespace Micromachine.AI.Service
                 canvas.DrawBitmap(this._carBmp, new SKRect(this._vm.X, this._vm.Y, this._vm.X + this._carBmp.Width, this._vm.Y + this._carBmp.Height));
 
                 // Camera 
-                var frontDistance = 5.0f;
-                var xDensity = 0.4f;
-                var yDensity = 0.2f;
-                var xGrid = 10;
-                var yGrid = 10;
-
                 lock (this._vm.Locker)
                 {
                     if (this.CameraInput == null)
                     {
-                        this.CameraInput = new float[xGrid * 2 * yGrid];
+                        this.CameraInput = new float[this._cameraGrid.TotalPoints];
                     }
 
                     // Get camera input
@@ -92,50 +88,31 @@ namespace Micromachine.AI.Service
                     var bitmap = new SKBitmap(dstinf);
                     var dstpixels = bitmap.GetPixels();
 
-                    for (var x = -xGrid; x < xGrid; x++)
+                    this._cameraGrid.Apply(this._vm.X, this._vm.Y, this._carBmp.Width, (i, j, x, y) =>
                     {
-                        for (var y = 0; y < yGrid; y++)
-                        {
-                            var cameraX = carCenterX + x * 1.0f / xDensity;
-                            var cameraY = this._vm.Y - y * 1.0f / yDensity - frontDistance;
-
-                            var point = canvas.TotalMatrix.MapPoint(cameraX, cameraY);
-
-                            surface.ReadPixels(dstinf, dstpixels, dstinf.RowBytes, (int) point.X, (int) point.Y);
-
-                            var color = bitmap.GetPixel(0, 0);
-                            this.CameraInput[x + xGrid + (yGrid - y - 1) * xGrid * 2] = Math.Min((color.Red + color.Blue + color.Green) / (3 * 255.0f), 255.0f); // convert to grayscale
-                        }
-                    }
+                        var point = canvas.TotalMatrix.MapPoint(x, y);
+                        surface.ReadPixels(dstinf, dstpixels, dstinf.RowBytes, (int)point.X, (int)point.Y);
+                        var color = bitmap.GetPixel(0, 0);
+                        this.CameraInput[i + this._cameraGrid.Width + (this._cameraGrid.Height - j - 1) * this._cameraGrid.Width * 2] = Math.Min((color.Red + color.Blue + color.Green) / (3 * 255.0f), 255.0f); // convert to grayscale
+                    });
                 }
 
                 // Draw camera grid
-                for (var x = -xGrid; x < xGrid; x++)
-                {
-                    for (var y = 0; y < yGrid; y++)
-                    {
-                        var cameraX = carCenterX + x * 1.0f / xDensity;
-                        var cameraY = this._vm.Y - y * 1.0f / yDensity - frontDistance;
-                        canvas.DrawPoint(cameraX, cameraY, SKColors.Black);
-                    }
-                }
+                this._cameraGrid.Apply(this._vm.X, this._vm.Y, this._carBmp.Width, (i, j, x, y) => canvas.DrawPoint(x, y, SKColors.Black));
 
                 canvas.RotateDegrees(-this._vm.Angle, carCenterX, carCenterY);
 
                 // Draw camera output
                 var zoom = 5.0f;
 
-                for (var x = -xGrid; x < xGrid; x++)
+                this._cameraGrid.Apply(this._vm.X, this._vm.Y, this._carBmp.Width, (i, j, x, y) =>
                 {
-                    for (var y = 0; y < yGrid; y++)
-                    {
-                        var c = (byte) (this.CameraInput[x + xGrid + y * xGrid * 2] * 255.0);
-                        var color = new SKColor(c, c, c);
-                        var paintRect = new SKPaint {Color = color};
+                    var c = (byte)(this.CameraInput[i + this._cameraGrid.Width + j * this._cameraGrid.Width * 2] * 255.0);
+                    var color = new SKColor(c, c, c);
+                    var paintRect = new SKPaint { Color = color };
 
-                        canvas.DrawRect(new SKRect(width - xGrid * zoom + x * zoom, y * zoom, width - xGrid * zoom + (x + 1) * zoom, (y + 1) * zoom), paintRect);
-                    }
-                }
+                    canvas.DrawRect(new SKRect(width - this._cameraGrid.Width * zoom + i * zoom, j * zoom, width - this._cameraGrid.Width * zoom + (i + 1) * zoom, (j + 1) * zoom), paintRect);
+                });
 
                 writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, width, height));
                 writeableBitmap.Unlock();

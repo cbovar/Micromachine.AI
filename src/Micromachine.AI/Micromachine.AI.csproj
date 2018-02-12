@@ -69,7 +69,9 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="Service\ICameraGrid.cs" />
     <Compile Include="Service\ImageService.cs" />
+    <Compile Include="Service\RectangularCameraGrid.cs" />
     <Compile Include="ViewModel\BaseViewModel.cs" />
     <Compile Include="ViewModel\Direction.cs" />
     <Compile Include="ViewModel\RelayCommand.cs" />
