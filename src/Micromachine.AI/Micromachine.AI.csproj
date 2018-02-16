@@ -73,7 +73,10 @@
     <Compile Include="Service\ImageService.cs" />
     <Compile Include="Service\RectangularCameraGrid.cs" />
     <Compile Include="ViewModel\BaseViewModel.cs" />
+    <Compile Include="ViewModel\Car.cs" />
     <Compile Include="ViewModel\Direction.cs" />
+    <Compile Include="ViewModel\IBrain.cs" />
+    <Compile Include="ViewModel\NNBrain.cs" />
     <Compile Include="ViewModel\RelayCommand.cs" />
     <Compile Include="ViewModel\ViewModel.cs" />
     <Page Include="MainWindow.xaml">

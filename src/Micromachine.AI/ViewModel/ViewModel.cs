@@ -1,15 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
-using System.Diagnostics;
+﻿using System.Collections.ObjectModel;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using ConvNetSharp.Core;
-using ConvNetSharp.Core.Fluent;
-using ConvNetSharp.Core.Training.Single;
-using ConvNetSharp.Volume;
-using ConvNetSharp.Volume.Single;
 using Micromachine.AI.Service;
 
 namespace Micromachine.AI.ViewModel
@@ -17,12 +9,6 @@ namespace Micromachine.AI.ViewModel
     internal class ViewModel : BaseViewModel
     {
         private readonly ImageService _imageService;
-
-        private readonly List<Tuple<float[], Direction>> _trainingSet = new List<Tuple<float[], Direction>>();
-
-        private readonly float maxSpeed = 3.0f;
-
-        private bool _autoMode;
 
         private ICommand _autoModeCommand;
 
@@ -35,25 +21,20 @@ namespace Micromachine.AI.ViewModel
         public ViewModel()
         {
             WriteableBitmap writeableBitmap;
-            this._cameraGrid = new RectangularCameraGrid(10,10);
-            this._imageService = new ImageService(this, this._cameraGrid);
+            var cameraGrid = new RectangularCameraGrid(10, 10);
+            this._imageService = new ImageService(this, cameraGrid);
             this.ImageSource = writeableBitmap = this._imageService.CreateImage(900, 600);
+
+            this.Car = new Car(new NNBrain(cameraGrid.TotalPoints)); // Create a car and neural network 'brain'
+
             CompositionTarget.Rendering += (o, e) =>
             {
                 UpdateCarCoordinates();
                 this._imageService.UpdateImage(writeableBitmap);
             };
-
-            CreateNetwork();
         }
 
-        public float Angle { get; set; }
-
-        public float X { get; set; } = 120.0f;
-
-        public float Y { get; set; } = 200.0f;
-
-        public float Speed { get; set; }
+        public Car Car { get; }
 
         public ObservableCollection<string> Logs { get; set; } = new ObservableCollection<string>();
 
@@ -68,8 +49,8 @@ namespace Micromachine.AI.ViewModel
             {
                 return this._autoModeCommand ?? (this._autoModeCommand = new RelayCommand(o => true, o =>
                 {
-                    this._autoMode = !this._autoMode;
-                    Log($"AutoMode = {this._autoMode}");
+                    this.Car.AutoPilot = !this.Car.AutoPilot;
+                    Log($"AutoMode = {this.Car.AutoPilot}");
                 }));
             }
         }
@@ -80,47 +61,10 @@ namespace Micromachine.AI.ViewModel
             {
                 return this._resetNetworkCommand ?? (this._resetNetworkCommand = new RelayCommand(o => true, o =>
                 {
-                    CreateNetwork();
+                    this.Car.Brain.Reset();
                     Log("Reset");
                 }));
             }
-        }
-
-        public float Loss
-        {
-            get => this._loss;
-            set
-            {
-                this._loss = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public int TrainingCount => this._trainingSet.Count;
-
-        private void AddNewTraining(Direction direction)
-        {
-            if (this._imageService.CameraInput != null)
-            {
-                this._trainingSet.Add(new Tuple<float[], Direction>((float[])this._imageService.CameraInput.Clone(), direction));
-                OnPropertyChanged("TrainingCount");
-            }
-        }
-
-        private void CreateNetwork()
-        {
-            this._trainingSet.Clear();
-            this.Loss = 0.0f;
-
-            this._network = FluentNet<float>
-                .Create(1, 1, this._cameraGrid.TotalPoints)
-                .FullyConn(100)
-                .FullyConn(3)
-                .Softmax(3)
-                .Build();
-
-            OnPropertyChanged("TrainingCount");
-            OnPropertyChanged("Loss");
         }
 
         private void Log(string s)
@@ -132,119 +76,66 @@ namespace Micromachine.AI.ViewModel
             }
         }
 
-        private void Rotate(Direction direction)
-        {
-            switch (direction)
-            {
-                case Direction.Straight:
-                    break;
-                case Direction.Left:
-                    this.Angle -= 3;
-                    break;
-                case Direction.Right:
-                    this.Angle += 3;
-                    break;
-            }
-        }
-
         public void Teach(Direction direction)
         {
             Log($"Teach {direction}");
 
             lock (this.Locker)
             {
-                AddNewTraining(direction);
+                this.Car.AddTrainingData((float[])this._imageService.CameraInput.Clone(), direction);
             }
 
-            Train();
-        }
-
-        private void Train()
-        {
-            // Create input and output volumes
-            var batchSize = this._trainingSet.Count;
-            var input = BuilderInstance.Volume.SameAs(new Shape(1, 1, this._cameraGrid.TotalPoints, batchSize));
-            var output = BuilderInstance.Volume.SameAs(new Shape(1, 1, 3, batchSize));
-
-            for (var i = 0; i < batchSize; i++)
-            {
-                for (var j = 0; j < this._cameraGrid.TotalPoints; j++)
-                {
-                    input.Set(0, 0, j, i, this._trainingSet[i].Item1[j]);
-                }
-
-                output.Set(0, 0, (int)this._trainingSet[i].Item2, i, 1.0f); // one-hot encoded output
-            }
-
-            var trainer = new SgdTrainer(this._network) { LearningRate = 0.01f, BatchSize = batchSize, L2Decay = 0.1f, L1Decay = 0.1f };
-
-            // Learn until loss converges
-            float previousLoss;
-            do
-            {
-                previousLoss = trainer.Loss;
-                trainer.Train(input, output);
-                Debug.WriteLine(trainer.Loss);
-            } while (Math.Abs(previousLoss - trainer.Loss) > 0.01);
-
-            this.Loss = (float)Math.Round(trainer.Loss, 2);
+            this.Car.Train();
         }
 
         public void UpdateCarCoordinates()
         {
-            if (this._autoMode)
+            if (this.Car.AutoPilot)
             {
-                var input = BuilderInstance.Volume.From(this._imageService.CameraInput, new Shape(1, 1, this._cameraGrid.TotalPoints, 1));
-                this._network.Forward(input); // evaluate network
-
-                var direction = (Direction)this._network.GetPrediction()[0]; // one-hot encoded -> label
-                Rotate(direction);
-
-                this.Speed = this.maxSpeed;
+                lock (this.Locker)
+                {
+                    this.Car.Evaluate(this._imageService.CameraInput);
+                }
             }
             else
             {
                 if (Keyboard.IsKeyDown(Key.Right) && Keyboard.Modifiers == ModifierKeys.None)
                 {
-                    Rotate(Direction.Right);
+                    this.Car.Rotate(Direction.Right);
                 }
 
                 if (Keyboard.IsKeyDown(Key.Left) && Keyboard.Modifiers == ModifierKeys.None)
                 {
-                    Rotate(Direction.Left);
+                    this.Car.Rotate(Direction.Left);
                 }
 
                 if (Keyboard.IsKeyDown(Key.Up) && Keyboard.Modifiers == ModifierKeys.None)
                 {
-                    this.Speed = this.maxSpeed;
+                    this.Car.Accelerate();
                 }
                 else if (Keyboard.IsKeyDown(Key.Down) && Keyboard.Modifiers == ModifierKeys.None)
                 {
-                    this.Speed = -this.maxSpeed;
+                    this.Car.Reverse();
                 }
                 else
                 {
-                    this.Speed = 0.0f;
+                    this.Car.Deccelerate();
                 }
             }
 
-            this.X += this.Speed * (float)Math.Sin(this.Angle / 360.0 * 2 * Math.PI);
-            this.Y -= this.Speed * (float)Math.Cos(this.Angle / 360.0 * 2 * Math.PI);
+            this.Car.UpdateCarCoordinates();
         }
 
         #region ImageSource
 
         private ImageSource _imageSource;
-        private INet<float> _network;
-        private float _loss;
-        private readonly RectangularCameraGrid _cameraGrid;
 
         public ImageSource ImageSource
         {
             get => this._imageSource;
             set
             {
-                if (this._imageSource != value)
+                if (!Equals(this._imageSource, value))
                 {
                     this._imageSource = value;
                     OnPropertyChanged(nameof(this.ImageSource));

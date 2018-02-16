@@ -59,8 +59,8 @@
 
         <Label Content="Loss:" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left" Margin="10,5,0,0" VerticalAlignment="Top" Foreground="White"/>
         <Label Content="Count:" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left" Margin="10,30,0,0" VerticalAlignment="Top" Foreground="White"/>
-        <TextBox Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left"  Margin="60,10,10,0" Text="{Binding Loss, Mode=OneWay}" VerticalAlignment="Top" IsEnabled="False" Height="23" Width="40"/>
-        <TextBox Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left"  Margin="60,35,10,0" Text="{Binding TrainingCount, Mode=OneWay}" VerticalAlignment="Top" IsEnabled="False" Height="23" Width="40"/>
+        <TextBox Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left"  Margin="60,10,10,0" Text="{Binding Car.Brain.Loss, Mode=OneWay}" VerticalAlignment="Top" IsEnabled="False" Height="23" Width="40"/>
+        <TextBox Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left"  Margin="60,35,10,0" Text="{Binding Car.Brain.TrainingCount, Mode=OneWay}" VerticalAlignment="Top" IsEnabled="False" Height="23" Width="40"/>
 
     </Grid>
 </Window>
