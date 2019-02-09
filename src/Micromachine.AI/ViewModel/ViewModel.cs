@@ -16,21 +16,21 @@ namespace Micromachine.AI.ViewModel
 
         private ICommand _someCommand;
 
-        public object Locker = new object(); // used to synchronise camera data between threads
+        public readonly object Locker = new object(); // used to synchronise camera data between threads
 
         public ViewModel()
         {
-            WriteableBitmap writeableBitmap;
+            WriteableBitmap writableBitmap;
             var cameraGrid = new RectangularCameraGrid(10, 10);
             this._imageService = new ImageService(this, cameraGrid);
-            this.ImageSource = writeableBitmap = this._imageService.CreateImage(900, 600);
+            this.ImageSource = writableBitmap = this._imageService.CreateImage(900, 600);
 
             this.Car = new Car(new NNBrain(cameraGrid.TotalPoints)); // Create a car and neural network 'brain'
 
             CompositionTarget.Rendering += (o, e) =>
             {
                 UpdateCarCoordinates();
-                this._imageService.UpdateImage(writeableBitmap);
+                this._imageService.UpdateImage(writableBitmap);
             };
         }
 
