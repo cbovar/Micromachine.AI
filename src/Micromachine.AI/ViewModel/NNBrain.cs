@@ -10,7 +10,7 @@ using ConvNetSharp.Volume.Single;
 namespace Micromachine.AI.ViewModel
 {
     /// <summary>
-    /// Neural network brain
+    ///     Neural network brain
     /// </summary>
     internal class NNBrain : BaseViewModel, IBrain
     {
@@ -22,7 +22,7 @@ namespace Micromachine.AI.ViewModel
         public NNBrain(int totalInputPoints)
         {
             this.TotalInputPoints = totalInputPoints;
-            CreateNetwork(totalInputPoints);
+            this.CreateNetwork(totalInputPoints);
         }
 
         public int TotalInputPoints { get; }
@@ -33,7 +33,7 @@ namespace Micromachine.AI.ViewModel
             set
             {
                 this._loss = value;
-                OnPropertyChanged();
+                this.OnPropertyChanged();
             }
         }
 
@@ -42,19 +42,18 @@ namespace Micromachine.AI.ViewModel
         public void AddTrainingData(float[] data, Direction direction)
         {
             this._trainingSet.Add(new Tuple<float[], Direction>(data, direction));
-            OnPropertyChanged(nameof(this.TrainingCount));
+            this.OnPropertyChanged(nameof(this.TrainingCount));
         }
 
         public void Reset()
         {
             this._trainingSet.Clear();
             this.Loss = 0.0f;
-            CreateNetwork(this.TotalInputPoints);
+            this.CreateNetwork(this.TotalInputPoints);
 
 
-            OnPropertyChanged(nameof(this.TrainingCount));
-            OnPropertyChanged(nameof(this.Loss));
-
+            this.OnPropertyChanged(nameof(this.TrainingCount));
+            this.OnPropertyChanged(nameof(this.Loss));
         }
 
         public Direction Evaluate(float[] data)
@@ -62,7 +61,7 @@ namespace Micromachine.AI.ViewModel
             var input = BuilderInstance.Volume.From(data, new Shape(1, 1, this.TotalInputPoints, 1));
             this._network.Forward(input); // evaluate network
 
-            var direction = (Direction) this._network.GetPrediction()[0]; // one-hot encoded -> label
+            var direction = (Direction)this._network.GetPrediction()[0]; // one-hot encoded -> label
             return direction;
         }
 
@@ -80,10 +79,10 @@ namespace Micromachine.AI.ViewModel
                     input.Set(0, 0, j, i, this._trainingSet[i].Item1[j]);
                 }
 
-                output.Set(0, 0, (int) this._trainingSet[i].Item2, i, 1.0f); // one-hot encoded output
+                output.Set(0, 0, (int)this._trainingSet[i].Item2, i, 1.0f); // one-hot encoded output
             }
 
-            var trainer = new SgdTrainer(this._network) {LearningRate = 0.1f, BatchSize = batchSize};
+            var trainer = new SgdTrainer(this._network) { LearningRate = 0.1f, BatchSize = batchSize };
 
             // Learn until loss converges
             float previousLoss;
@@ -94,7 +93,7 @@ namespace Micromachine.AI.ViewModel
                 Debug.WriteLine(trainer.Loss);
             } while (Math.Abs(previousLoss - trainer.Loss) > 0.01);
 
-            this.Loss = (float) Math.Round(trainer.Loss, 2);
+            this.Loss = (float)Math.Round(trainer.Loss, 2);
         }
 
         private void CreateNetwork(int totalInputPoints)

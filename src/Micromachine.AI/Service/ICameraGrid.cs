@@ -2,7 +2,7 @@
 
 namespace Micromachine.AI.Service
 {
-    interface ICameraGrid
+    internal interface ICameraGrid
     {
         int TotalPoints { get; }
 

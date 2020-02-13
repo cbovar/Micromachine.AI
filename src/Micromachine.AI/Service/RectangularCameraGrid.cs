@@ -3,8 +3,8 @@
 namespace Micromachine.AI.Service
 {
     /// <summary>
-    /// Creates a rectangular grid used to generate input for the camera.
-    /// It is also used to draw the camera grid and the camera output
+    ///     Creates a rectangular grid used to generate input for the camera.
+    ///     It is also used to draw the camera grid and the camera output
     /// </summary>
     internal class RectangularCameraGrid : ICameraGrid
     {

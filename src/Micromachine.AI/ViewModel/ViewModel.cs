@@ -10,13 +10,13 @@ namespace Micromachine.AI.ViewModel
     {
         private readonly ImageService _imageService;
 
+        public readonly object Locker = new object(); // used to synchronise camera data between threads
+
         private ICommand _autoModeCommand;
 
         private ICommand _resetNetworkCommand;
 
         private ICommand _someCommand;
-
-        public readonly object Locker = new object(); // used to synchronise camera data between threads
 
         public ViewModel()
         {
@@ -29,7 +29,7 @@ namespace Micromachine.AI.ViewModel
 
             CompositionTarget.Rendering += (o, e) =>
             {
-                UpdateCarCoordinates();
+                this.UpdateCarCoordinates();
                 this._imageService.UpdateImage(writableBitmap);
             };
         }
@@ -40,18 +40,18 @@ namespace Micromachine.AI.ViewModel
 
         public ICommand TeachCommand
         {
-            get { return this._someCommand ?? (this._someCommand = new RelayCommand(o => true, o => Teach((Direction)int.Parse((string)o)))); }
+            get { return this._someCommand ??= new RelayCommand(o => true, o => this.Teach((Direction) int.Parse((string) o))); }
         }
 
         public ICommand AutoModeCommand
         {
             get
             {
-                return this._autoModeCommand ?? (this._autoModeCommand = new RelayCommand(o => true, o =>
+                return this._autoModeCommand ??= new RelayCommand(o => true, o =>
                 {
                     this.Car.AutoPilot = !this.Car.AutoPilot;
-                    Log($"AutoMode = {this.Car.AutoPilot}");
-                }));
+                    this.Log($"AutoMode = {this.Car.AutoPilot}");
+                });
             }
         }
 
@@ -59,11 +59,11 @@ namespace Micromachine.AI.ViewModel
         {
             get
             {
-                return this._resetNetworkCommand ?? (this._resetNetworkCommand = new RelayCommand(o => true, o =>
+                return this._resetNetworkCommand ??= new RelayCommand(o => true, o =>
                 {
                     this.Car.Brain.Reset();
-                    Log("Reset");
-                }));
+                    this.Log("Reset");
+                });
             }
         }
 
@@ -78,11 +78,11 @@ namespace Micromachine.AI.ViewModel
 
         public void Teach(Direction direction)
         {
-            Log($"Teach {direction}");
+            this.Log($"Teach {direction}");
 
             lock (this.Locker)
             {
-                this.Car.AddTrainingData((float[])this._imageService.CameraInput.Clone(), direction);
+                this.Car.AddTrainingData((float[]) this._imageService.CameraInput.Clone(), direction);
             }
 
             this.Car.Train();
@@ -119,7 +119,7 @@ namespace Micromachine.AI.ViewModel
                 }
                 else
                 {
-                    this.Car.Deccelerate();
+                    this.Car.Decelerate();
                 }
             }
 
@@ -135,11 +135,13 @@ namespace Micromachine.AI.ViewModel
             get => this._imageSource;
             set
             {
-                if (!Equals(this._imageSource, value))
+                if (Equals(this._imageSource, value))
                 {
-                    this._imageSource = value;
-                    OnPropertyChanged(nameof(this.ImageSource));
+                    return;
                 }
+
+                this._imageSource = value;
+                this.OnPropertyChanged(nameof(this.ImageSource));
             }
         }
 

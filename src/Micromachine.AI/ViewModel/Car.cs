@@ -4,7 +4,7 @@ namespace Micromachine.AI.ViewModel
 {
     internal class Car
     {
-        private readonly float maxSpeed = 3.0f;
+        private const float MaxSpeed = 3.0f;
 
         public Car(IBrain brain)
         {
@@ -25,7 +25,7 @@ namespace Micromachine.AI.ViewModel
 
         public void Accelerate()
         {
-            this.Speed = this.maxSpeed;
+            this.Speed = MaxSpeed;
         }
 
         public void AddTrainingData(float[] data, Direction direction)
@@ -33,7 +33,7 @@ namespace Micromachine.AI.ViewModel
             this.Brain.AddTrainingData(data, direction);
         }
 
-        public void Deccelerate()
+        public void Decelerate()
         {
             this.Speed = 0;
         }
@@ -41,14 +41,14 @@ namespace Micromachine.AI.ViewModel
         public void Evaluate(float[] data)
         {
             var direction = this.Brain.Evaluate(data);
-            Rotate(direction);
+            this.Rotate(direction);
 
-            this.Speed = this.maxSpeed;
+            this.Speed = MaxSpeed;
         }
 
         public void Reverse()
         {
-            this.Speed = -this.maxSpeed;
+            this.Speed = -MaxSpeed;
         }
 
         public void Rotate(Direction direction)
@@ -73,8 +73,8 @@ namespace Micromachine.AI.ViewModel
 
         public void UpdateCarCoordinates()
         {
-            this.X += this.Speed * (float) Math.Sin(this.Angle / 360.0 * 2 * Math.PI);
-            this.Y -= this.Speed * (float) Math.Cos(this.Angle / 360.0 * 2 * Math.PI);
+            this.X += this.Speed * (float)Math.Sin(this.Angle / 360.0 * 2 * Math.PI);
+            this.Y -= this.Speed * (float)Math.Cos(this.Angle / 360.0 * 2 * Math.PI);
         }
     }
 }

@@ -8,7 +8,7 @@ using SkiaSharp;
 namespace Micromachine.AI.Service
 {
     /// <summary>
-    /// Used to draw fps, frames, track, car, camera grid and camera output
+    ///     Used to draw fps, frames, track, car, camera grid and camera output
     /// </summary>
     internal class ImageService
     {
@@ -42,89 +42,82 @@ namespace Micromachine.AI.Service
         /// <param name="writeableBitmap"></param>
         public void UpdateImage(WriteableBitmap writeableBitmap)
         {
-            int width = (int)writeableBitmap.Width,
-                height = (int)writeableBitmap.Height;
+            int width = (int) writeableBitmap.Width,
+                height = (int) writeableBitmap.Height;
 
             writeableBitmap.Lock();
 
-            using (var surface = SKSurface.Create(
-                width,
-                height,
-                SKColorType.Bgra8888,
-                SKAlphaType.Premul,
-                writeableBitmap.BackBuffer,
-                width * 4))
+            using var surface = SKSurface.Create(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul), writeableBitmap.BackBuffer, width * 4);
+
+            var canvas = surface.Canvas;
+
+            var paint = new SKPaint {Color = new SKColor(0, 0, 0), TextSize = 16};
+
+            // Draw track
+            canvas.DrawBitmap(this._trackBmp, new SKRect(0, 0, width, height));
+
+            // Draw FPS
+            if (this._call == 0)
             {
-                var canvas = surface.Canvas;
+                this._stopwatch.Start();
+            }
 
-                var paint = new SKPaint { Color = new SKColor(0, 0, 0), TextSize = 16 };
+            var fps = this._call / (this._stopwatch.Elapsed.TotalSeconds != 0 ? this._stopwatch.Elapsed.TotalSeconds : 1);
+            canvas.DrawText($"FPS: {fps:0}", 5, 16, paint);
+            canvas.DrawText($"Frames: {this._call++}", 5, 32, paint);
 
-                // Draw track
-                canvas.DrawBitmap(this._trackBmp, new SKRect(0, 0, width, height));
+            var car = this._vm.Car;
 
-                // Draw FPS
-                if (this._call == 0)
+            // Draw car
+            var carCenterX = car.X + this._carBmp.Width / 2.0f;
+            var carCenterY = car.Y + this._carBmp.Height / 2.0f;
+
+            canvas.RotateDegrees(car.Angle, carCenterX, carCenterY);
+            canvas.DrawBitmap(this._carBmp, new SKRect(car.X, car.Y, car.X + this._carBmp.Width, car.Y + this._carBmp.Height));
+
+            // Camera 
+            lock (this._vm.Locker)
+            {
+                if (this.CameraInput == null)
                 {
-                    this._stopwatch.Start();
+                    this.CameraInput = new float[this._cameraGrid.TotalPoints];
                 }
 
-                var fps = this._call / (this._stopwatch.Elapsed.TotalSeconds != 0 ? this._stopwatch.Elapsed.TotalSeconds : 1);
-                canvas.DrawText($"FPS: {fps:0}", 5, 16, paint);
-                canvas.DrawText($"Frames: {this._call++}", 5, 32, paint);
-
-                var car = this._vm.Car;
-
-                // Draw car
-                var carCenterX = car.X + this._carBmp.Width / 2.0f;
-                var carCenterY = car.Y + this._carBmp.Height / 2.0f;
-
-                canvas.RotateDegrees(car.Angle, carCenterX, carCenterY);
-                canvas.DrawBitmap(this._carBmp, new SKRect(car.X, car.Y, car.X + this._carBmp.Width, car.Y + this._carBmp.Height));
-
-                // Camera 
-                lock (this._vm.Locker)
-                {
-                    if (this.CameraInput == null)
-                    {
-                        this.CameraInput = new float[this._cameraGrid.TotalPoints];
-                    }
-
-                    // Get camera input
-                    var dstinf = new SKImageInfo(1, 1, SKColorType.Bgra8888, SKAlphaType.Premul);
-                    var bitmap = new SKBitmap(dstinf);
-                    var dstpixels = bitmap.GetPixels();
-
-                    this._cameraGrid.Apply(car.X, car.Y, this._carBmp.Width, (i, j, x, y) =>
-                    {
-                        var point = canvas.TotalMatrix.MapPoint(x, y);
-                        surface.ReadPixels(dstinf, dstpixels, dstinf.RowBytes, (int)point.X, (int)point.Y);
-                        var color = bitmap.GetPixel(0, 0);
-                        this.CameraInput[i + this._cameraGrid.Width + (this._cameraGrid.Height - j - 1) * this._cameraGrid.Width * 2] =
-                            Math.Min((color.Red + color.Blue + color.Green) / (3 * 255.0f), 255.0f); // convert to grayscale
-                    });
-                }
-
-                // Draw camera grid
-                this._cameraGrid.Apply(car.X, car.Y, this._carBmp.Width, (i, j, x, y) => canvas.DrawPoint(x, y, SKColors.Black));
-
-                canvas.RotateDegrees(-car.Angle, carCenterX, carCenterY);
-
-                // Draw camera output
-                var zoom = 5.0f;
+                // Get camera input
+                var dstinf = new SKImageInfo(1, 1, SKColorType.Bgra8888, SKAlphaType.Premul);
+                var bitmap = new SKBitmap(dstinf);
+                var dstpixels = bitmap.GetPixels();
 
                 this._cameraGrid.Apply(car.X, car.Y, this._carBmp.Width, (i, j, x, y) =>
                 {
-                    var c = (byte)(this.CameraInput[i + this._cameraGrid.Width + j * this._cameraGrid.Width * 2] * 255.0);
-                    var color = new SKColor(c, c, c);
-                    var paintRect = new SKPaint { Color = color };
-
-                    canvas.DrawRect(new SKRect(width - this._cameraGrid.Width * zoom + i * zoom, j * zoom, width - this._cameraGrid.Width * zoom + (i + 1) * zoom, (j + 1) * zoom),
-                        paintRect);
+                    var point = canvas.TotalMatrix.MapPoint(x, y);
+                    surface.ReadPixels(dstinf, dstpixels, dstinf.RowBytes, (int) point.X, (int) point.Y);
+                    var color = bitmap.GetPixel(0, 0);
+                    this.CameraInput[i + this._cameraGrid.Width + (this._cameraGrid.Height - j - 1) * this._cameraGrid.Width * 2] =
+                        Math.Min((color.Red + color.Blue + color.Green) / (3 * 255.0f), 255.0f); // convert to grayscale
                 });
-
-                writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, width, height));
-                writeableBitmap.Unlock();
             }
+
+            // Draw camera grid
+            this._cameraGrid.Apply(car.X, car.Y, this._carBmp.Width, (i, j, x, y) => canvas.DrawPoint(x, y, SKColors.Black));
+
+            canvas.RotateDegrees(-car.Angle, carCenterX, carCenterY);
+
+            // Draw camera output
+            var zoom = 5.0f;
+
+            this._cameraGrid.Apply(car.X, car.Y, this._carBmp.Width, (i, j, x, y) =>
+            {
+                var c = (byte) (this.CameraInput[i + this._cameraGrid.Width + j * this._cameraGrid.Width * 2] * 255.0);
+                var color = new SKColor(c, c, c);
+                var paintRect = new SKPaint {Color = color};
+
+                canvas.DrawRect(new SKRect(width - this._cameraGrid.Width * zoom + i * zoom, j * zoom, width - this._cameraGrid.Width * zoom + (i + 1) * zoom, (j + 1) * zoom),
+                    paintRect);
+            });
+
+            writeableBitmap.AddDirtyRect(new Int32Rect(0, 0, width, height));
+            writeableBitmap.Unlock();
         }
     }
 }
